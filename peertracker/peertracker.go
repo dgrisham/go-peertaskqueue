@@ -54,6 +54,8 @@ type PeerTracker struct {
 	taskQueue pq.PQ
 
 	taskMerger TaskMerger
+
+	priority int
 }
 
 // New creates a new PeerTracker
@@ -124,6 +126,10 @@ func (p *PeerTracker) Index() int {
 // SetIndex implements pq.Elem.
 func (p *PeerTracker) SetIndex(i int) {
 	p.index = i
+}
+
+func (p *PeerTracker) Priority() int {
+	return p.priority
 }
 
 // PushTasks adds a group of tasks onto a peer's queue

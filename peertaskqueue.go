@@ -1,6 +1,7 @@
 package peertaskqueue
 
 import (
+	"fmt"
 	"sync"
 
 	pq "github.com/ipfs/go-ipfs-pq"
@@ -14,6 +15,7 @@ type peerTaskQueueEvent int
 const (
 	peerAdded   = peerTaskQueueEvent(1)
 	peerRemoved = peerTaskQueueEvent(2)
+	numLanes    = 10 // TODO: tune and/or make configurable
 )
 
 type hookFunc func(p peer.ID, event peerTaskQueueEvent)
@@ -24,12 +26,32 @@ type hookFunc func(p peer.ID, event peerTaskQueueEvent)
 // first if priorities are equal.
 type PeerTaskQueue struct {
 	lock           sync.Mutex
-	pQueue         pq.PQ
+	pQueues        [numLanes]pq.PQ
 	peerTrackers   map[peer.ID]*peertracker.PeerTracker
 	frozenPeers    map[peer.ID]struct{}
 	hooks          []hookFunc
 	ignoreFreezing bool
 	taskMerger     peertracker.TaskMerger
+}
+
+func (ptq *PeerTaskQueue) SetPriority(id peer.ID, priority int) error {
+	if priority < 1 || priority >= numLanes {
+		return fmt.Errorf("Priority of %d is outside of the valid range [1, %d]", priority, numLanes)
+	}
+
+	ptq.lock.Lock()
+	defer ptq.lock.Unlock()
+
+	tracker, ok := ptq.peerTrackers[id]
+	if !ok {
+		return fmt.Errorf("Peer with id %s not found", id)
+	}
+
+	// remove peer from its old pq, then add to new
+	ptq.pQueues[tracker.Priority()].Remove(tracker.Index())
+	ptq.pQueues[priority].Push(tracker)
+
+	return nil
 }
 
 // Option is a function that configures the peer task queue
@@ -106,8 +128,10 @@ func New(options ...Option) *PeerTaskQueue {
 	ptq := &PeerTaskQueue{
 		peerTrackers: make(map[peer.ID]*peertracker.PeerTracker),
 		frozenPeers:  make(map[peer.ID]struct{}),
-		pQueue:       pq.New(peertracker.PeerCompare),
 		taskMerger:   &peertracker.DefaultTaskMerger{},
+	}
+	for i := range ptq.pQueues { // initialize pQueue for each lane
+		ptq.pQueues[i] = pq.New(peertracker.PeerCompare)
 	}
 	ptq.Options(options...)
 	return ptq
@@ -140,13 +164,13 @@ func (ptq *PeerTaskQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	peerTracker, ok := ptq.peerTrackers[to]
 	if !ok {
 		peerTracker = peertracker.New(to, ptq.taskMerger)
-		ptq.pQueue.Push(peerTracker)
+		ptq.pQueues[0].Push(peerTracker) // default to lowest priority until SetPriority is called for this peer
 		ptq.peerTrackers[to] = peerTracker
 		ptq.callHooks(to, peerAdded)
 	}
 
 	peerTracker.PushTasks(tasks...)
-	ptq.pQueue.Update(peerTracker.Index())
+	ptq.pQueues[peerTracker.Priority()].Update(peerTracker.Index())
 }
 
 // PopTasks finds the peer with the highest priority and pops as many tasks
@@ -163,14 +187,25 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 	ptq.lock.Lock()
 	defer ptq.lock.Unlock()
 
-	if ptq.pQueue.Len() == 0 {
+	// get highest-priority queue containing peers
+	var pQueue pq.PQ
+	for _, pQueue = range ptq.pQueues {
+		if pQueue.Len() > 0 {
+			break
+		}
+	}
+	if pQueue == nil {
 		return "", nil, -1
 	}
 
 	var peerTracker *peertracker.PeerTracker
 
+	peerTracker = pQueue.Peek().(*peertracker.PeerTracker)
+	if peerTracker == nil {
+		return "", nil, -1
+	}
 	// Choose the highest priority peer
-	peerTracker = ptq.pQueue.Peek().(*peertracker.PeerTracker)
+	peerTracker = pQueue.Peek().(*peertracker.PeerTracker)
 	if peerTracker == nil {
 		return "", nil, -1
 	}
@@ -180,7 +215,7 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 
 	// If the peer has no more tasks, remove its peer tracker
 	if peerTracker.IsIdle() {
-		ptq.pQueue.Pop()
+		pQueue.Pop()
 		target := peerTracker.Target()
 		delete(ptq.peerTrackers, target)
 		delete(ptq.frozenPeers, target)
@@ -188,7 +223,7 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 	} else {
 		// We may have modified the peer tracker's state (by popping tasks), so
 		// update its position in the priority queue
-		ptq.pQueue.Update(peerTracker.Index())
+		pQueue.Update(peerTracker.Index())
 	}
 
 	return peerTracker.Target(), out, pendingWork
@@ -213,7 +248,8 @@ func (ptq *PeerTaskQueue) TasksDone(to peer.ID, tasks ...*peertask.Task) {
 
 	// This may affect the peer's position in the peer queue, so update if
 	// necessary
-	ptq.pQueue.Update(peerTracker.Index())
+	pQueue := ptq.pQueues[peerTracker.Priority()]
+	pQueue.Update(peerTracker.Index())
 }
 
 // Remove removes a task from the queue.
@@ -235,7 +271,7 @@ func (ptq *PeerTaskQueue) Remove(topic peertask.Topic, p peer.ID) {
 
 				peerTracker.Freeze()
 			}
-			ptq.pQueue.Update(peerTracker.Index())
+			ptq.pQueues[peerTracker.Priority()].Update(peerTracker.Index())
 		}
 	}
 }
@@ -250,7 +286,7 @@ func (ptq *PeerTaskQueue) FullThaw() {
 		if ok {
 			peerTracker.FullThaw()
 			delete(ptq.frozenPeers, p)
-			ptq.pQueue.Update(peerTracker.Index())
+			ptq.pQueues[peerTracker.Priority()].Update(peerTracker.Index())
 		}
 	}
 }
@@ -267,7 +303,7 @@ func (ptq *PeerTaskQueue) ThawRound() {
 			if peerTracker.Thaw() {
 				delete(ptq.frozenPeers, p)
 			}
-			ptq.pQueue.Update(peerTracker.Index())
+			ptq.pQueues[peerTracker.Priority()].Update(peerTracker.Index())
 		}
 	}
 }
