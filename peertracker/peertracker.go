@@ -55,7 +55,7 @@ type PeerTracker struct {
 
 	taskMerger TaskMerger
 
-	priority int
+	weight int
 }
 
 // New creates a new PeerTracker
@@ -128,8 +128,12 @@ func (p *PeerTracker) SetIndex(i int) {
 	p.index = i
 }
 
-func (p *PeerTracker) Priority() int {
-	return p.priority
+func (p *PeerTracker) Weight() int {
+	return p.weight
+}
+
+func (p *PeerTracker) SetWeight(weight int) {
+	p.weight = weight
 }
 
 // PushTasks adds a group of tasks onto a peer's queue
