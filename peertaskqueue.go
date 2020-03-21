@@ -32,6 +32,8 @@ type PeerTaskQueue struct {
 	hooks          []hookFunc
 	ignoreFreezing bool
 	taskMerger     peertracker.TaskMerger
+	currentQueue   int // which queue we're currently serving (0 <= currentQueue < numLanes)
+	queueIteration int // which iteration we're on for the current queue
 }
 
 // Option is a function that configures the peer task queue
@@ -137,8 +139,8 @@ func (ptq *PeerTaskQueue) callHooks(to peer.ID, event peerTaskQueueEvent) {
 }
 
 func (ptq *PeerTaskQueue) SetWeight(id peer.ID, weight int) error {
-	if weight < 1 || weight >= numLanes {
-		return fmt.Errorf("Weight of %d is outside of the valid range [1, %d]", weight, numLanes)
+	if weight < 0 || weight > numLanes {
+		return fmt.Errorf("Weight of %d is outside of the valid range [0, %d]", weight, numLanes-1)
 	}
 
 	ptq.lock.Lock()
@@ -178,6 +180,14 @@ func (ptq *PeerTaskQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	ptq.pQueues[peerTracker.Weight()].Update(peerTracker.Index())
 }
 
+func (ptq *PeerTaskQueue) incrementQueue() {
+	ptq.currentQueue += 1
+	if ptq.currentQueue >= numLanes { // all queues have been served for this round
+		ptq.currentQueue = 0 // reset to the first queue
+	}
+	ptq.queueIteration = 0 // reset queue iteration counter
+}
+
 // PopTasks finds the peer with the highest priority and pops as many tasks
 // off the peer's queue as necessary to cover targetMinWork, in priority order.
 // If there are not enough tasks to cover targetMinWork it just returns
@@ -192,15 +202,18 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 	ptq.lock.Lock()
 	defer ptq.lock.Unlock()
 
-	// get highest-priority queue containing peers
-	var pQueue pq.PQ
-	for _, pQueue = range ptq.pQueues {
-		if pQueue.Len() > 0 {
-			break
+	startingQueue := ptq.currentQueue // save starting point so we know when we've checked all queues
+	pQueue := ptq.pQueues[ptq.currentQueue]
+	for pQueue.Len() == 0 { // stop at first non-empty queue
+		ptq.incrementQueue()                   // queue is empty, move to the next one
+		if ptq.currentQueue == startingQueue { // all queues are empty, return
+			return "", nil, -1
 		}
-	}
-	if pQueue == nil {
-		return "", nil, -1
+		pQueue = ptq.pQueues[ptq.currentQueue] // check next queue
+	} // non-empty queue found
+	ptq.queueIteration += 1                    // increment queue iteration counter
+	if ptq.queueIteration > ptq.currentQueue { // done serving this queue for this round
+		ptq.incrementQueue()
 	}
 
 	var peerTracker *peertracker.PeerTracker
