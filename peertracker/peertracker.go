@@ -56,6 +56,8 @@ type PeerTracker struct {
 	taskMerger TaskMerger
 
 	weight int
+
+	served int
 }
 
 // New creates a new PeerTracker
@@ -130,6 +132,14 @@ func (p *PeerTracker) SetIndex(i int) {
 
 func (p *PeerTracker) Weight() int {
 	return p.weight
+}
+
+func (p *PeerTracker) SetRemainingData(n int) {
+	p.served = n
+}
+
+func (p *PeerTracker) RemainingData() int {
+	return p.served
 }
 
 func (p *PeerTracker) SetWeight(weight int) {
