@@ -145,10 +145,6 @@ func (ptq *PeerTaskQueue) SetWeight(id peer.ID, weight int) error {
 		return fmt.Errorf("Peer with id %s not found", id)
 	}
 
-	if tracker.Weight() == weight { // weight already set to passed value
-		return nil
-	}
-
 	tracker.SetWeight(weight)
 	return nil
 }
