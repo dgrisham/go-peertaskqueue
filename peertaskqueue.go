@@ -163,7 +163,6 @@ func (ptq *PeerTaskQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	}
 
 	peerTracker.PushTasks(tasks...)
-	// ptq.pQueues[peerTracker.Weight()].Update(peerTracker.Index())
 }
 
 func (ptq *PeerTaskQueue) newRound() {
