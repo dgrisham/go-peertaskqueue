@@ -55,9 +55,8 @@ type PeerTracker struct {
 
 	taskMerger TaskMerger
 
-	weight int
-
-	work int
+	weight        int
+	workRemaining int
 }
 
 // New creates a new PeerTracker
@@ -76,6 +75,14 @@ func New(target peer.ID, taskMerger TaskMerger) *PeerTracker {
 func PeerCompare(a, b pq.Elem) bool {
 	pa := a.(*PeerTracker)
 	pb := b.(*PeerTracker)
+
+	// give lowest priority to peers with no more work
+	if pa.WorkRemaining() <= 0 {
+		return false
+	}
+	if pb.WorkRemaining() <= 0 {
+		return true
+	}
 
 	// having no pending tasks means lowest priority
 	paPending := len(pa.pendingTasks)
@@ -130,20 +137,20 @@ func (p *PeerTracker) SetIndex(i int) {
 	p.index = i
 }
 
+func (p *PeerTracker) SetWeight(w int) {
+	p.weight = w
+}
+
 func (p *PeerTracker) Weight() int {
 	return p.weight
 }
 
-func (p *PeerTracker) SetWork(n int) {
-	p.work = n
+func (p *PeerTracker) SetWorkRemaining(w int) {
+	p.workRemaining = w
 }
 
-func (p *PeerTracker) Work() int {
-	return p.work
-}
-
-func (p *PeerTracker) SetWeight(weight int) {
-	p.weight = weight
+func (p *PeerTracker) WorkRemaining() int {
+	return p.workRemaining
 }
 
 // PushTasks adds a group of tasks onto a peer's queue
@@ -188,7 +195,8 @@ func (p *PeerTracker) PushTasks(tasks ...peertask.Task) {
 // targetMinWork it just returns whatever is in the queue.
 // The second response argument is pending work: the amount of work in the
 // queue for this peer.
-func (p *PeerTracker) PopTasks(targetMinWork int) ([]*peertask.Task, int) {
+// The third response is the amount of work returned.
+func (p *PeerTracker) PopTasks(targetMinWork int) ([]*peertask.Task, int, int) {
 	var out []*peertask.Task
 	work := 0
 	for p.taskQueue.Len() > 0 && p.freezeVal == 0 && work < targetMinWork {
@@ -202,7 +210,7 @@ func (p *PeerTracker) PopTasks(targetMinWork int) ([]*peertask.Task, int) {
 		work += t.Work
 	}
 
-	return out, p.getPendingWork()
+	return out, p.getPendingWork(), work
 }
 
 // startTask signals that a task was started for this peer.

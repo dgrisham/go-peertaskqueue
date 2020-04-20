@@ -156,7 +156,6 @@ func (ptq *PeerTaskQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	peerTracker, ok := ptq.peerTrackers[to]
 	if !ok {
 		peerTracker = peertracker.New(to, ptq.taskMerger)
-		// ptq.pQueues[0].Push(peerTracker) // default to lowest priority until SetPriority is called for this peer
 		ptq.peerTrackers[to] = peerTracker
 		ptq.callHooks(to, peerAdded)
 	}
@@ -171,8 +170,7 @@ func (ptq *PeerTaskQueue) newRound() {
 	}
 
 	for _, tracker := range ptq.peerTrackers {
-		tracker.SetWork((roundSize * tracker.Weight()) / totalWeight)
-		ptq.pQueue.Push(tracker)
+		tracker.SetWorkRemaining((roundSize * tracker.Weight()) / totalWeight)
 	}
 }
 
@@ -207,8 +205,8 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 	}
 
 	// Get the highest priority tasks for the given peer
-	out, pendingWork := peerTracker.PopTasks(targetMinWork)
-	peerTracker.SetWork(peerTracker.Work() - len(out))
+	out, pendingWork, poppedWork := peerTracker.PopTasks(targetMinWork)
+	peerTracker.SetWorkRemaining(peerTracker.WorkRemaining() - poppedWork)
 
 	// If the peer has no more tasks, remove its peer tracker
 	if peerTracker.IsIdle() {
@@ -217,9 +215,6 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 		delete(ptq.peerTrackers, target)
 		delete(ptq.frozenPeers, target)
 		ptq.callHooks(target, peerRemoved)
-	} else if peerTracker.Work() <= 0 { // Will only be < 0 if targetMinWork > Work()
-		// We've finished serving the peer for this round, remove their tracker from the pQueue
-		ptq.pQueue.Pop()
 	} else {
 		// We may have modified the peer tracker's state (by popping tasks), so
 		// update its position in the priority queue
