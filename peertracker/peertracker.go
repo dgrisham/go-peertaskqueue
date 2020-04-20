@@ -57,7 +57,7 @@ type PeerTracker struct {
 
 	weight int
 
-	served int
+	work int
 }
 
 // New creates a new PeerTracker
@@ -134,12 +134,12 @@ func (p *PeerTracker) Weight() int {
 	return p.weight
 }
 
-func (p *PeerTracker) SetRemainingData(n int) {
-	p.served = n
+func (p *PeerTracker) SetWork(n int) {
+	p.work = n
 }
 
-func (p *PeerTracker) RemainingData() int {
-	return p.served
+func (p *PeerTracker) Work() int {
+	return p.work
 }
 
 func (p *PeerTracker) SetWeight(weight int) {
