@@ -32,7 +32,6 @@ type PeerTaskQueue struct {
 	hooks          []hookFunc
 	ignoreFreezing bool
 	taskMerger     peertracker.TaskMerger
-	currentQueue   int // which queue we're currently serving (0 <= currentQueue < numLanes)
 }
 
 // Option is a function that configures the peer task queue
