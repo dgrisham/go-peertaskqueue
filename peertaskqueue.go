@@ -206,11 +206,6 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 		return "", nil, -1
 	}
 
-	if targetMinWork > peerTracker.RemainingData() {
-		// Only serve up to the peer's remaining data for this round
-		targetMinWork = peerTracker.RemainingData()
-	}
-
 	// Get the highest priority tasks for the given peer
 	out, pendingWork := peerTracker.PopTasks(targetMinWork)
 	peerTracker.SetRemainingData(peerTracker.RemainingData() - targetMinWork)
@@ -222,7 +217,7 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 		delete(ptq.peerTrackers, target)
 		delete(ptq.frozenPeers, target)
 		ptq.callHooks(target, peerRemoved)
-	} else if peerTracker.RemainingData() == 0 {
+	} else if peerTracker.RemainingData() <= 0 { // Will only be < 0 if targetMinWork > RemainingData()
 		// We've finished serving the peer for this round, remove their tracker from the pQueue
 		ptq.pQueue.Pop()
 	} else {
