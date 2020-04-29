@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/ipfs/go-peertaskqueue/testutil"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -72,6 +73,46 @@ func TestPushPop(t *testing.T) {
 	}
 }
 
+func TestWorkDistribution(t *testing.T) {
+	ptq := New()
+	peers := testutil.GeneratePeers(11)
+	// alphabet := "abcdefghijklmnopqrstuvwxyz"
+	letters := "abcdefghij"
+
+	// add a bunch of blocks. cancel some. drain the queue. the queue should only have the kept tasks
+
+	for _, peer := range peers {
+		for index, letter := range letters { // add blocks for all letters
+			ptq.PushTasks(peer, peertask.Task{Topic: letter, Priority: math.MaxInt32 - index})
+		}
+	}
+
+	// set weight of each peer based on its index
+	for index, id := range peers {
+		// weights are every int in [0, len(peers))
+		ptq.SetWeight(id, index)
+	}
+
+	// peers should pop in order of priority
+	for i := 0; i < len(peers); i++ {
+		peer := ptq.pQueue.Pop().(*peertracker.PeerTracker)
+		if peer == nil {
+			t.Fatal("Expected peer, got nothing")
+		}
+
+		expected := peers[len(peers)-i]
+		if peer.Target() != expected {
+			t.Fatalf("Expected peer %s, got peer %s", expected)
+		}
+	}
+
+	if peer := ptq.pQueue.Pop().(*peertracker.PeerTracker); peer != nil {
+		t.Fatal("Expected nil, got peer %s", peer.Target())
+	}
+
+	// TODO
+}
+
 func TestFreezeUnfreeze(t *testing.T) {
 	ptq := New()
 	peers := testutil.GeneratePeers(4)
@@ -106,7 +147,6 @@ func TestFreezeUnfreeze(t *testing.T) {
 
 	// b should not be frozen
 	matchNTasks(t, ptq, 4, a.Pretty(), b.Pretty(), c.Pretty(), d.Pretty())
-
 }
 
 func TestFreezeUnfreezeNoFreezingOption(t *testing.T) {
