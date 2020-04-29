@@ -188,20 +188,19 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 	ptq.lock.Lock()
 	defer ptq.lock.Unlock()
 
-	if ptq.pQueue.Len() == 0 {
-		// possible that the round has been exhausted, reset
-		ptq.newRound()
-		if ptq.pQueue.Len() == 0 { // queue still empty, return
-			return "", nil, -1
-		}
-	}
-
 	var peerTracker *peertracker.PeerTracker
 
 	// Choose the highest priority peer
 	peerTracker = ptq.pQueue.Peek().(*peertracker.PeerTracker)
 	if peerTracker == nil {
 		return "", nil, -1
+	}
+	if peerTracker.WorkRemaining() <= 0 { // all peers have <= remaining work, reset round
+		ptq.newRound()
+		peerTracker = ptq.pQueue.Peek().(*peertracker.PeerTracker)
+		if peerTracker == nil { // shouldn't happen since we got a peerTracker last time
+			return "", nil, -1
+		}
 	}
 
 	// Get the highest priority tasks for the given peer
