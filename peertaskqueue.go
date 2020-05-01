@@ -108,6 +108,7 @@ func New(options ...Option) *PeerTaskQueue {
 	ptq := &PeerTaskQueue{
 		peerTrackers: make(map[peer.ID]*peertracker.PeerTracker),
 		frozenPeers:  make(map[peer.ID]struct{}),
+		pQueue:       pq.New(peertracker.PeerCompare),
 		taskMerger:   &peertracker.DefaultTaskMerger{},
 	}
 
@@ -156,11 +157,13 @@ func (ptq *PeerTaskQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	peerTracker, ok := ptq.peerTrackers[to]
 	if !ok {
 		peerTracker = peertracker.New(to, ptq.taskMerger)
+		ptq.pQueue.Push(peerTracker)
 		ptq.peerTrackers[to] = peerTracker
 		ptq.callHooks(to, peerAdded)
 	}
 
 	peerTracker.PushTasks(tasks...)
+	ptq.pQueue.Update(peerTracker.Index())
 }
 
 func (ptq *PeerTaskQueue) newRound() {
@@ -171,6 +174,7 @@ func (ptq *PeerTaskQueue) newRound() {
 
 	for _, tracker := range ptq.peerTrackers {
 		tracker.SetWorkRemaining((roundSize * tracker.Weight()) / totalWeight)
+		ptq.pQueue.Update(tracker.Index())
 	}
 }
 
