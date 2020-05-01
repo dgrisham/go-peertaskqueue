@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-peertaskqueue/peertask"
-	"github.com/ipfs/go-peertaskqueue/peertracker"
 	"github.com/ipfs/go-peertaskqueue/testutil"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -73,44 +72,46 @@ func TestPushPop(t *testing.T) {
 	}
 }
 
-func TestWorkDistribution(t *testing.T) {
+func TestSimpleWorkDistribution(t *testing.T) {
 	ptq := New()
-	peers := testutil.GeneratePeers(11)
-	// alphabet := "abcdefghijklmnopqrstuvwxyz"
-	letters := "abcdefghij"
+	peerIDs := testutil.GeneratePeers(11)
 
-	// add a bunch of blocks. cancel some. drain the queue. the queue should only have the kept tasks
-
-	for _, peer := range peers {
-		for index, letter := range letters { // add blocks for all letters
-			ptq.PushTasks(peer, peertask.Task{Topic: letter, Priority: math.MaxInt32 - index})
-		}
+	// add a task for every peer
+	for _, id := range peerIDs {
+		ptq.PushTasks(id, peertask.Task{Topic: "a", Work: 100})
 	}
 
 	// set weight of each peer based on its index
-	for index, id := range peers {
-		// weights are every int in [0, len(peers))
+	for index, id := range peerIDs {
 		ptq.SetWeight(id, index)
 	}
 
-	// peers should pop in order of priority
-	for i := 0; i < len(peers); i++ {
-		peer := ptq.pQueue.Pop().(*peertracker.PeerTracker)
-		if peer == nil {
-			t.Fatal("Expected peer, got nothing")
-		}
+	// calculate work for each peer
+	ptq.newRound()
 
-		expected := peers[len(peers)-i]
-		if peer.Target() != expected {
-			t.Fatalf("Expected peer %s, got peer %s", expected)
+	// pop all tasks
+	var servedPeers []peer.ID
+	for {
+		id, received, _ := ptq.PopTasks(100)
+		if received == nil {
+			break
 		}
+		servedPeers = append(servedPeers, id)
 	}
 
-	if peer := ptq.pQueue.Pop().(*peertracker.PeerTracker); peer != nil {
-		t.Fatal("Expected nil, got peer %s", peer.Target())
+	// every peer except for the one with 0 weight should have been served
+	if len(servedPeers) != len(peerIDs)-1 {
+		t.Fatalf("Expected %d exhausted peers, got %d", len(peerIDs)-1, len(servedPeers))
 	}
-
-	// TODO
+	for _, servedPeer := range servedPeers {
+		for i, peer := range peerIDs {
+			if servedPeer == peer {
+				if i == 0 {
+					t.Fatal("Peer with 0 weight was served, this shouldn't have happened")
+				}
+			}
+		}
+	}
 }
 
 func TestFreezeUnfreeze(t *testing.T) {
