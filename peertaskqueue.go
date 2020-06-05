@@ -13,9 +13,9 @@ import (
 type peerTaskQueueEvent int
 
 const (
-	peerAdded   = peerTaskQueueEvent(1)
-	peerRemoved = peerTaskQueueEvent(2)
-	roundSize   = 10000 // total data to distribute among peers per round
+	peerAdded        = peerTaskQueueEvent(1)
+	peerRemoved      = peerTaskQueueEvent(2)
+	defaultRoundSize = 10000 // total data to distribute among peers per round
 )
 
 type hookFunc func(p peer.ID, event peerTaskQueueEvent)
@@ -32,6 +32,7 @@ type PeerTaskQueue struct {
 	hooks          []hookFunc
 	ignoreFreezing bool
 	taskMerger     peertracker.TaskMerger
+	roundSize      int
 }
 
 // Option is a function that configures the peer task queue
@@ -105,11 +106,16 @@ func OnPeerRemovedHook(onPeerRemovedHook func(p peer.ID)) Option {
 
 // New creates a new PeerTaskQueue
 func New(options ...Option) *PeerTaskQueue {
+	return newWithRoundSize(defaultRoundSize, options...)
+}
+
+func newWithRoundSize(roundSize int, options ...Option) *PeerTaskQueue {
 	ptq := &PeerTaskQueue{
 		peerTrackers: make(map[peer.ID]*peertracker.PeerTracker),
 		frozenPeers:  make(map[peer.ID]struct{}),
 		pQueue:       pq.New(peertracker.PeerCompare),
 		taskMerger:   &peertracker.DefaultTaskMerger{},
+		roundSize:    roundSize,
 	}
 
 	ptq.pQueue = pq.New(peertracker.PeerCompare)
@@ -173,7 +179,7 @@ func (ptq *PeerTaskQueue) newRound() {
 	}
 
 	for _, tracker := range ptq.peerTrackers {
-		tracker.SetWorkRemaining((roundSize * tracker.Weight()) / totalWeight)
+		tracker.SetWorkRemaining((ptq.roundSize * tracker.Weight()) / totalWeight)
 		ptq.pQueue.Update(tracker.Index())
 	}
 }

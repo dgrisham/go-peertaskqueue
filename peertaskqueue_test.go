@@ -72,13 +72,63 @@ func TestPushPop(t *testing.T) {
 	}
 }
 
-func TestSimpleWorkDistribution(t *testing.T) {
-	ptq := New()
-	peerIDs := testutil.GeneratePeers(11)
+// TestPeerWeightsSingleRoundConstantWeights gives all peers the same weight and a single task each. Popping one task
+// for each peer should exhaust a single round-robin round and leave all peers with no work
+// remaining.
+func TestPeerWeightsSingleRoundConstantWeights(t *testing.T) {
+	numPeers := rand.Int()%100 + 1   // [1, 100]
+	blockSize := rand.Int()%1000 + 1 // [1, 1000]
+	ptq := newWithRoundSize(numPeers * blockSize)
+	peerIDs := testutil.GeneratePeers(numPeers)
 
 	// add a task for every peer
 	for _, id := range peerIDs {
-		ptq.PushTasks(id, peertask.Task{Topic: "a", Work: 100})
+		ptq.PushTasks(id, peertask.Task{Topic: "a", Work: blockSize})
+		// same weight for each peer
+		ptq.SetWeight(id, 1)
+	}
+
+	// initialize round
+	ptq.newRound()
+
+	// every peer should have workSize as their initial remaining work
+	for _, peer := range ptq.peerTrackers {
+		if peer.WorkRemaining() != blockSize {
+			t.Fatalf("Peer %s: expected %d work remaining for all peers, got %d", peer.Target(), blockSize, peer.WorkRemaining())
+		}
+	}
+
+	// call PopTasks once for each peer (should result in serving each peer once)
+	for i := 0; i < numPeers; i++ {
+		_, received, _ := ptq.PopTasks(blockSize)
+		if received == nil {
+			t.Fatalf("Failed to pop tasks for peer before all peers were served")
+		}
+	}
+
+	// all peers should have 0 work remaining
+	for _, peer := range ptq.peerTrackers {
+		if peer.WorkRemaining() != 0 {
+			t.Errorf("Expected 0 work remaining for all peers, got %d for peer %s", peer.WorkRemaining(), peer.Target())
+		}
+	}
+}
+
+// TestPeerWeightsSingleRoundVaryingWeights: for each peer `i` in `[0, n)`, we push `i` tasks for
+// that peer, and set the weight of that peer to `i`. The round size is equal to the total number
+// of blocks we push. By the end of a single round, we should have popped all of every peer's blocks.
+func TestPeerWeightsSingleRoundVaryingWeights(t *testing.T) {
+	numPeers := rand.Int()%100 + 1
+	blockSize := rand.Int()%1000 + 1
+	numBlocks := numPeers * (numPeers - 1) / 2
+	ptq := newWithRoundSize(blockSize * numBlocks)
+	peerIDs := testutil.GeneratePeers(numPeers)
+
+	// add a task for every peer
+	for i, id := range peerIDs {
+		for j := 0; j < i; j++ { // peer 0 wants 0 blocks, peer 1 wants 1, ...
+			ptq.PushTasks(id, peertask.Task{Topic: fmt.Sprintf("%d-%d", i, j), Work: blockSize})
+		}
 	}
 
 	// set weight of each peer based on its index
@@ -89,26 +139,124 @@ func TestSimpleWorkDistribution(t *testing.T) {
 	// calculate work for each peer
 	ptq.newRound()
 
-	// pop all tasks
-	var servedPeers []peer.ID
-	for {
-		id, received, _ := ptq.PopTasks(100)
-		if received == nil {
-			break
-		}
-		servedPeers = append(servedPeers, id)
+	poppedBlocks := make(map[peer.ID]int)
+	for _, id := range peerIDs {
+		poppedBlocks[id] = 0
 	}
 
-	// every peer except for the one with 0 weight should have been served
-	if len(servedPeers) != len(peerIDs)-1 {
-		t.Fatalf("Expected %d exhausted peers, got %d", len(peerIDs)-1, len(servedPeers))
+	// pop all tasks
+	for i := 0; i < numBlocks; i++ {
+		id, received, _ := ptq.PopTasks(blockSize)
+		if received == nil {
+			t.Fatalf("No more tasks to pop, expected %d more", numBlocks-i)
+		}
+		poppedBlocks[id] += len(received)
 	}
-	for _, servedPeer := range servedPeers {
+
+	// check that we popped the expected number blocks for each peer
+	totalPopped := 0
+	for i, peer := range peerIDs {
+		numPopped, ok := poppedBlocks[peer]
+		if !ok {
+			if i != 0 {
+				t.Fatalf("Peer %s was not in poppedBlocks; this should never happen", peer)
+			}
+		}
+		if numPopped != i {
+			t.Errorf("Peer %s: expected %d blocks to be popped for peer, actual was %d", peer, i, numPopped)
+		}
+
+		totalPopped += numPopped
+	}
+
+	if totalPopped != numBlocks {
+		t.Fatalf("Expected %d total blocks to be popped off, got %d", numBlocks, totalPopped)
+	}
+
+	for _, peer := range ptq.peerTrackers {
+		if peer.WorkRemaining() != 0 {
+			t.Errorf("Expected 0 work remaining for all peers, got %d for peer %s", peer.WorkRemaining(), peer.Target())
+		}
+	}
+
+	// This must be called after the WorkRemaining() checks above because it'll start the next round +
+	// recalculate the peers' WorkRemaining() values
+	_, received, _ := ptq.PopTasks(blockSize)
+	if received != nil {
+		t.Fatalf("Expected no more tasks")
+	}
+}
+
+// Same as TestPeerWeightsSingleRoundVaryingWeights, but with a random number of rounds > 2.
+func TestPeerWeightsMultiRound(t *testing.T) {
+	numPeers := rand.Int()%100 + 1
+	blockSize := rand.Int()%1000 + 1
+	numRounds := rand.Int()%20 + 2
+	numBlocksPerRound := numPeers * (numPeers - 1) / 2
+	ptq := newWithRoundSize(blockSize * numBlocksPerRound)
+	peerIDs := testutil.GeneratePeers(numPeers)
+
+	// add a task for every peer
+	for i, id := range peerIDs {
+		for j := 0; j < i; j++ { // peer 0 wants 0 blocks, peer 1 wants 1, ...
+			ptq.PushTasks(id, peertask.Task{Topic: fmt.Sprintf("%d-%d", i, j), Work: blockSize})
+		}
+	}
+
+	// set weight of each peer based on its index
+	for index, id := range peerIDs {
+		ptq.SetWeight(id, index)
+	}
+
+	for round := 0; round < numRounds; round++ {
+		t.Logf("round %d", round)
+		// calculate work for each peer
+		ptq.newRound()
+
+		poppedBlocks := make(map[peer.ID]int)
+		for _, id := range peerIDs {
+			poppedBlocks[id] = 0
+		}
+
+		// pop all tasks
+		for i := 0; i < numBlocksPerRound; i++ {
+			id, received, _ := ptq.PopTasks(blockSize)
+			if received == nil {
+				t.Fatalf("No more tasks to pop, expected %d more", numBlocksPerRound-i)
+			}
+			poppedBlocks[id] += len(received)
+		}
+
+		// check that we popped the expected number blocks for each peer
+		totalPopped := 0
 		for i, peer := range peerIDs {
-			if servedPeer == peer {
-				if i == 0 {
-					t.Fatal("Peer with 0 weight was served, this shouldn't have happened")
+			numPopped, ok := poppedBlocks[peer]
+			if !ok {
+				if i != 0 {
+					t.Fatalf("Peer %s was not in poppedBlocks; this should never happen", peer)
 				}
+			}
+			if numPopped != i {
+				t.Errorf("Peer %s: expected %d blocks to be popped for peer, actual was %d", peer, i, numPopped)
+			}
+
+			totalPopped += numPopped
+		}
+
+		if totalPopped != numBlocksPerRound {
+			t.Fatalf("Expected %d total blocks to be popped off, got %d", numBlocksPerRound, totalPopped)
+		}
+
+		for _, peer := range ptq.peerTrackers {
+			if peer.WorkRemaining() != 0 {
+				t.Errorf("Expected 0 work remaining for all peers, got %d for peer %s", peer.WorkRemaining(), peer.Target())
+			}
+		}
+
+		// add a task for every peer
+		for i, id := range peerIDs {
+			for j := 0; j < i; j++ { // peer 0 wants 0 blocks, peer 1 wants 1, ...
+				ptq.PushTasks(id, peertask.Task{Topic: fmt.Sprintf("%d-%d-%d", round, i, j), Work: blockSize})
 			}
 		}
 	}
