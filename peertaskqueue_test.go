@@ -72,10 +72,10 @@ func TestPushPop(t *testing.T) {
 	}
 }
 
-// TestPeerWeightsSingleRoundConstantWeights gives all peers the same weight and a single task each. Popping one task
+// TestPeerWeightsOneRoundConstantWeights gives all peers the same weight and a single task each. Popping one task
 // for each peer should exhaust a single round-robin round and leave all peers with no work
 // remaining.
-func TestPeerWeightsSingleRoundConstantWeights(t *testing.T) {
+func TestPeerWeightsOneRoundConstantWeights(t *testing.T) {
 	numPeers := rand.Int()%100 + 1   // [1, 100]
 	blockSize := rand.Int()%1000 + 1 // [1, 1000]
 	ptq := newWithRoundSize(numPeers * blockSize)
@@ -114,10 +114,10 @@ func TestPeerWeightsSingleRoundConstantWeights(t *testing.T) {
 	}
 }
 
-// TestPeerWeightsSingleRoundVaryingWeights: for each peer `i` in `[0, n)`, we push `i` tasks for
+// TestPeerWeightsOneRoundVaryingWeights: for each peer `i` in `[0, n)`, we push `i` tasks for
 // that peer, and set the weight of that peer to `i`. The round size is equal to the total number
 // of blocks we push. By the end of a single round, we should have popped all of every peer's blocks.
-func TestPeerWeightsSingleRoundVaryingWeights(t *testing.T) {
+func TestPeerWeightsOneRoundVaryingWeights(t *testing.T) {
 	numPeers := rand.Int()%100 + 1
 	blockSize := rand.Int()%1000 + 1
 	numBlocks := numPeers * (numPeers - 1) / 2
