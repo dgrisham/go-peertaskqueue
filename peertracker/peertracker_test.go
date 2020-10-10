@@ -11,7 +11,7 @@ func TestEmpty(t *testing.T) {
 	partner := testutil.GeneratePeers(1)[0]
 	tracker := New(partner, &DefaultTaskMerger{})
 
-	tasks, _ := tracker.PopTasks(100)
+	tasks, _, _ := tracker.PopTasks(100)
 	if len(tasks) != 0 {
 		t.Fatal("Expected no tasks")
 	}
@@ -29,7 +29,7 @@ func TestPushPop(t *testing.T) {
 		},
 	}
 	tracker.PushTasks(tasks...)
-	popped, _ := tracker.PopTasks(100)
+	popped, _, _ := tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -50,11 +50,11 @@ func TestPopNegativeOrZeroSize(t *testing.T) {
 		},
 	}
 	tracker.PushTasks(tasks...)
-	popped, _ := tracker.PopTasks(-1)
+	popped, _, _ := tracker.PopTasks(-1)
 	if len(popped) != 0 {
 		t.Fatal("Expected 0 tasks")
 	}
-	popped, _ = tracker.PopTasks(0)
+	popped, _, _ = tracker.PopTasks(0)
 	if len(popped) != 0 {
 		t.Fatal("Expected 0 tasks")
 	}
@@ -83,7 +83,7 @@ func TestPushPopSizeAndOrder(t *testing.T) {
 	}
 	tracker.PushTasks(tasks...)
 
-	popped, pending := tracker.PopTasks(10)
+	popped, pending, _ := tracker.PopTasks(10)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -94,7 +94,7 @@ func TestPushPopSizeAndOrder(t *testing.T) {
 		t.Fatal("Expected pending work to be 20")
 	}
 
-	popped, pending = tracker.PopTasks(100)
+	popped, pending, _ = tracker.PopTasks(100)
 	if len(popped) != 2 {
 		t.Fatal("Expected 2 tasks")
 	}
@@ -105,7 +105,7 @@ func TestPushPopSizeAndOrder(t *testing.T) {
 		t.Fatal("Expected pending work to be 0")
 	}
 
-	popped, pending = tracker.PopTasks(100)
+	popped, pending, _ = tracker.PopTasks(100)
 	if len(popped) != 0 {
 		t.Fatal("Expected 0 tasks")
 	}
@@ -132,14 +132,14 @@ func TestPopFirstItemAlways(t *testing.T) {
 	}
 	tracker.PushTasks(tasks...)
 
-	// Pop with target size 7.
+	// Pop with target size, _ 7.
 	// PopTasks should always return the first task even if it's under target work.
-	popped, _ := tracker.PopTasks(7)
+	popped, _, _ := tracker.PopTasks(7)
 	if len(popped) != 1 || popped[0].Topic != "1" {
 		t.Fatal("Expected first task to be popped")
 	}
 
-	popped, _ = tracker.PopTasks(100)
+	popped, _, _ = tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -168,14 +168,14 @@ func TestPopItemsToCoverTargetWork(t *testing.T) {
 	}
 	tracker.PushTasks(tasks...)
 
-	// Pop with target size 7.
+	// Pop with target size, _ 7.
 	// PopTasks should return enough items to cover the target work.
-	popped, _ := tracker.PopTasks(7)
+	popped, _, _ := tracker.PopTasks(7)
 	if len(popped) != 2 || popped[0].Topic != "1" || popped[1].Topic != "2" {
 		t.Fatal("Expected first two tasks to be popped")
 	}
 
-	popped, _ = tracker.PopTasks(100)
+	popped, _, _ = tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -204,7 +204,7 @@ func TestRemove(t *testing.T) {
 	}
 	tracker.PushTasks(tasks...)
 	tracker.Remove("2")
-	popped, _ := tracker.PopTasks(100)
+	popped, _, _ := tracker.PopTasks(100)
 	if len(popped) != 2 {
 		t.Fatal("Expected 2 tasks")
 	}
@@ -236,7 +236,7 @@ func TestRemoveMulti(t *testing.T) {
 	}
 	tracker.PushTasks(tasks...)
 	tracker.Remove("1")
-	popped, _ := tracker.PopTasks(100)
+	popped, _, _ := tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -268,7 +268,7 @@ func TestTaskDone(t *testing.T) {
 	tracker.PushTasks(tasks[0]) // Topic "1"
 
 	// Pop task "a". This makes the task active.
-	popped, _ := tracker.PopTasks(10)
+	popped, _, _ := tracker.PopTasks(10)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -281,7 +281,7 @@ func TestTaskDone(t *testing.T) {
 
 	// Pop all tasks. Task "a" was done so task "b" should have been allowed to
 	// be added.
-	popped, _ = tracker.PopTasks(100)
+	popped, _, _ = tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -292,6 +292,7 @@ type permissiveTaskMerger struct{}
 func (*permissiveTaskMerger) HasNewInfo(task peertask.Task, existing []peertask.Task) bool {
 	return true
 }
+
 func (*permissiveTaskMerger) Merge(task peertask.Task, existing *peertask.Task) {
 	existing.Data = task.Data
 	existing.Work = task.Work
@@ -324,7 +325,7 @@ func TestReplaceTaskPermissive(t *testing.T) {
 	tracker.PushTasks(tasks[1]) // Topic "1"
 
 	// Pop all tasks, should only be task "b".
-	popped, _ := tracker.PopTasks(100)
+	popped, _, _ := tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -373,14 +374,14 @@ func TestReplaceTaskSize(t *testing.T) {
 
 	// Pop with target size 15. Should only pop task "a" because its Work
 	// is now 20 (was 10)
-	popped, pending := tracker.PopTasks(15)
+	popped, pending, _ := tracker.PopTasks(15)
 	if len(popped) != 1 || popped[0].Data != "b" {
 		t.Fatal("Expected 1 task")
 	}
 	if pending != 5 {
 		t.Fatal("Expected pending work to be 5")
 	}
-	popped, pending = tracker.PopTasks(30)
+	popped, pending, _ = tracker.PopTasks(30)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -412,7 +413,7 @@ func TestReplaceActiveTask(t *testing.T) {
 	tracker.PushTasks(tasks[0]) // Topic "1"
 
 	// Pop task "a". This makes the task active.
-	popped, _ := tracker.PopTasks(10)
+	popped, _, _ := tracker.PopTasks(10)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -422,7 +423,7 @@ func TestReplaceActiveTask(t *testing.T) {
 
 	// Pop all tasks. Task "a" was active so task "b" should have been moved to
 	// the pending queue.
-	popped, _ = tracker.PopTasks(100)
+	popped, _, _ = tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -451,7 +452,7 @@ func TestReplaceActiveTaskNonPermissive(t *testing.T) {
 	tracker.PushTasks(tasks[0]) // Topic "1"
 
 	// Pop task "a". This makes the task active.
-	popped, _ := tracker.PopTasks(10)
+	popped, _, _ := tracker.PopTasks(10)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -460,7 +461,7 @@ func TestReplaceActiveTaskNonPermissive(t *testing.T) {
 	tracker.PushTasks(tasks[1]) // Topic "1"
 
 	// Pop all tasks.
-	popped, _ = tracker.PopTasks(100)
+	popped, _, _ = tracker.PopTasks(100)
 	if len(popped) != 0 {
 		t.Fatal("Expected no tasks")
 	}
@@ -495,7 +496,7 @@ func TestReplaceTaskThatIsActiveAndPending(t *testing.T) {
 	tracker.PushTasks(tasks[0]) // Topic "1"
 
 	// Pop task "a". This makes the task active.
-	popped, _ := tracker.PopTasks(10)
+	popped, _, _ := tracker.PopTasks(10)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -508,7 +509,7 @@ func TestReplaceTaskThatIsActiveAndPending(t *testing.T) {
 	tracker.PushTasks(tasks[2]) // Topic "1"
 
 	// Pop all tasks.
-	popped, _ = tracker.PopTasks(100)
+	popped, _, _ = tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -546,7 +547,7 @@ func TestRemoveActive(t *testing.T) {
 	tracker.PushTasks(tasks[0]) // Topic "1"
 
 	// Pop task "a". This makes the task active.
-	popped, _ := tracker.PopTasks(10)
+	popped, _, _ := tracker.PopTasks(10)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}
@@ -558,7 +559,7 @@ func TestRemoveActive(t *testing.T) {
 	// Remove all tasks with Topic "1".
 	// This should remove task "b" from the pending queue.
 	tracker.Remove("1")
-	popped, _ = tracker.PopTasks(100)
+	popped, _, _ = tracker.PopTasks(100)
 	if len(popped) != 1 {
 		t.Fatal("Expected 1 task")
 	}

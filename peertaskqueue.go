@@ -177,6 +177,9 @@ func (ptq *PeerTaskQueue) newRound() {
 	for _, tracker := range ptq.peerTrackers {
 		totalWeight += tracker.Weight()
 	}
+	if totalWeight == 0 {
+		return
+	}
 
 	for _, tracker := range ptq.peerTrackers {
 		tracker.SetWorkRemaining((ptq.roundSize * tracker.Weight()) / totalWeight)
