@@ -209,7 +209,6 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 
 	// Choose the highest priority peer
 	peek := ptq.pQueue.Peek()
-	fmt.Printf("PEEK ELEM: %v\n", peek)
 	peerTracker = peek.(*peertracker.PeerTracker)
 	if peerTracker == nil {
 		return "", nil, -1
