@@ -201,6 +201,10 @@ func (ptq *PeerTaskQueue) PopTasks(targetMinWork int) (peer.ID, []*peertask.Task
 	ptq.lock.Lock()
 	defer ptq.lock.Unlock()
 
+	if ptq.pQueue.Len() == 0 {
+		return "", nil, -1
+	}
+
 	var peerTracker *peertracker.PeerTracker
 
 	// Choose the highest priority peer
