@@ -106,10 +106,11 @@ func OnPeerRemovedHook(onPeerRemovedHook func(p peer.ID)) Option {
 
 // New creates a new PeerTaskQueue
 func New(options ...Option) *PeerTaskQueue {
-	return newWithRoundSize(defaultRoundSize, options...)
+	return NewWithRoundSize(defaultRoundSize, options...)
 }
 
-func newWithRoundSize(roundSize int, options ...Option) *PeerTaskQueue {
+// @dgrisham prq peer-weights
+func NewWithRoundSize(roundSize int, options ...Option) *PeerTaskQueue {
 	ptq := &PeerTaskQueue{
 		peerTrackers: make(map[peer.ID]*peertracker.PeerTracker),
 		frozenPeers:  make(map[peer.ID]struct{}),
