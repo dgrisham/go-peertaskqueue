@@ -156,6 +156,18 @@ func (ptq *PeerTaskQueue) SetWeight(id peer.ID, weight int) error {
 	return nil
 }
 
+func (ptq *PeerTaskQueue) GetWeight(id peer.ID) (int, error) {
+	ptq.lock.Lock()
+	defer ptq.lock.Unlock()
+
+	tracker, ok := ptq.peerTrackers[id]
+	if !ok {
+		return 0, fmt.Errorf("Peer with id %s not found", id)
+	}
+
+	return tracker.Weight(), nil
+}
+
 // PushTasks adds a new group of tasks for the given peer to the queue
 func (ptq *PeerTaskQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 	ptq.lock.Lock()
