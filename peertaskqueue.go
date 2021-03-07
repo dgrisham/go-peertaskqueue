@@ -2,6 +2,7 @@ package peertaskqueue
 
 import (
 	"fmt"
+	"math"
 	"sync"
 
 	pq "github.com/ipfs/go-ipfs-pq"
@@ -143,7 +144,7 @@ func (ptq *PeerTaskQueue) callHooks(to peer.ID, event peerTaskQueueEvent) {
 	}
 }
 
-func (ptq *PeerTaskQueue) SetWeight(id peer.ID, weight int) error {
+func (ptq *PeerTaskQueue) SetWeight(id peer.ID, weight float64) error {
 	ptq.lock.Lock()
 	defer ptq.lock.Unlock()
 
@@ -156,7 +157,7 @@ func (ptq *PeerTaskQueue) SetWeight(id peer.ID, weight int) error {
 	return nil
 }
 
-func (ptq *PeerTaskQueue) GetWeight(id peer.ID) (int, error) {
+func (ptq *PeerTaskQueue) GetWeight(id peer.ID) (float64, error) {
 	ptq.lock.Lock()
 	defer ptq.lock.Unlock()
 
@@ -186,7 +187,7 @@ func (ptq *PeerTaskQueue) PushTasks(to peer.ID, tasks ...peertask.Task) {
 }
 
 func (ptq *PeerTaskQueue) newRound() {
-	totalWeight := 0
+	var totalWeight float64 = 0
 	for _, tracker := range ptq.peerTrackers {
 		totalWeight += tracker.Weight()
 	}
@@ -195,7 +196,7 @@ func (ptq *PeerTaskQueue) newRound() {
 	}
 
 	for _, tracker := range ptq.peerTrackers {
-		tracker.SetWorkRemaining((ptq.roundSize * tracker.Weight()) / totalWeight)
+		tracker.SetWorkRemaining(int(math.Floor((float64(ptq.roundSize) * tracker.Weight()) / totalWeight)))
 		ptq.pQueue.Update(tracker.Index())
 	}
 }

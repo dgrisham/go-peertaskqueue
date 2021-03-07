@@ -55,7 +55,7 @@ type PeerTracker struct {
 
 	taskMerger TaskMerger
 
-	weight        int
+	weight        float64
 	workRemaining int
 }
 
@@ -137,11 +137,11 @@ func (p *PeerTracker) SetIndex(i int) {
 	p.index = i
 }
 
-func (p *PeerTracker) SetWeight(w int) {
+func (p *PeerTracker) SetWeight(w float64) {
 	p.weight = w
 }
 
-func (p *PeerTracker) Weight() int {
+func (p *PeerTracker) Weight() float64 {
 	return p.weight
 }
 
