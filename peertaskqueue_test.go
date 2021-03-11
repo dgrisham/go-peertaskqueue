@@ -78,7 +78,7 @@ func TestPushPop(t *testing.T) {
 func TestPeerWeightsOneRoundConstantWeights(t *testing.T) {
 	numPeers := rand.Int()%100 + 1   // [1, 100]
 	blockSize := rand.Int()%1000 + 1 // [1, 1000]
-	ptq := newWithRoundSize(numPeers * blockSize)
+	ptq := NewWithRoundSize(numPeers * blockSize)
 	peerIDs := testutil.GeneratePeers(numPeers)
 
 	// add a task for every peer
@@ -121,10 +121,10 @@ func TestPeerWeightsOneRoundVaryingWeights(t *testing.T) {
 	numPeers := rand.Int()%100 + 1
 	blockSize := rand.Int()%1000 + 1
 	numBlocks := numPeers * (numPeers - 1) / 2
-	ptq := newWithRoundSize(blockSize * numBlocks)
+	ptq := NewWithRoundSize(blockSize * numBlocks)
 	peerIDs := testutil.GeneratePeers(numPeers)
 
-	// add a task for every peer
+	// add task(s) for every peer
 	for i, id := range peerIDs {
 		for j := 0; j < i; j++ { // peer 0 wants 0 blocks, peer 1 wants 1, ...
 			ptq.PushTasks(id, peertask.Task{Topic: fmt.Sprintf("%d-%d", i, j), Work: blockSize})
@@ -133,7 +133,7 @@ func TestPeerWeightsOneRoundVaryingWeights(t *testing.T) {
 
 	// set weight of each peer based on its index
 	for index, id := range peerIDs {
-		ptq.SetWeight(id, index)
+		ptq.SetWeight(id, float64(index))
 	}
 
 	// calculate work for each peer
@@ -174,6 +174,9 @@ func TestPeerWeightsOneRoundVaryingWeights(t *testing.T) {
 	}
 
 	for _, peer := range ptq.peerTrackers {
+		t.Logf("Got %d work remaining for peer %s", peer.WorkRemaining(), peer.Target())
+	}
+	for _, peer := range ptq.peerTrackers {
 		if peer.WorkRemaining() != 0 {
 			t.Errorf("Expected 0 work remaining for all peers, got %d for peer %s", peer.WorkRemaining(), peer.Target())
 		}
@@ -193,7 +196,7 @@ func TestPeerWeightsMultiRound(t *testing.T) {
 	blockSize := rand.Int()%1000 + 1
 	numRounds := rand.Int()%20 + 2
 	numBlocksPerRound := numPeers * (numPeers - 1) / 2
-	ptq := newWithRoundSize(blockSize * numBlocksPerRound)
+	ptq := NewWithRoundSize(blockSize * numBlocksPerRound)
 	peerIDs := testutil.GeneratePeers(numPeers)
 
 	// add a task for every peer
@@ -205,7 +208,7 @@ func TestPeerWeightsMultiRound(t *testing.T) {
 
 	// set weight of each peer based on its index
 	for index, id := range peerIDs {
-		ptq.SetWeight(id, index)
+		ptq.SetWeight(id, float64(index))
 	}
 
 	for round := 0; round < numRounds; round++ {
