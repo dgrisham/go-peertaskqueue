@@ -157,6 +157,7 @@ func (ptq *PeerTaskQueue) SetWeight(id peer.ID, weight float64) error {
 	return nil
 }
 
+// @dgrisham for bitswap tests, otherwise can be removed
 func (ptq *PeerTaskQueue) GetStats(id peer.ID) (float64, int, error) {
 	ptq.lock.Lock()
 	defer ptq.lock.Unlock()
